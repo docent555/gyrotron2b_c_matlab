@@ -38,9 +38,10 @@
 #include "gyrotron_terminate.h"
 #include "rt_nonfinite.h"
 
-static void main_gyrotron(double Ne, double z0, double zex, double zin, double Tend, double Delta,
+static void main_gyrotron(int Ne, double z0, double zex, double zin, double Tend, double Delta,
 	double I0, double dz, double dt, double tol, int INTT, int INTZ, double a0, int nexl, int nexr, int mode, double akp2)
 {
+	emxArray_real_T* ConLow;
 	emxArray_real_T* OUTFre;
 	emxArray_real_T* OUTFim;
 	emxArray_real_T* OUTJre;
@@ -49,50 +50,36 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 	emxArray_real_T* OUTTAxis;
 	emxArray_real_T* Eff;
 	emxArray_real_T* Omega;
+	emxArray_real_T* pim;
+	emxArray_real_T* pre;
 	double jout;
 	emxInitArray_real_T(&OUTFre, 2);
 	emxInitArray_real_T(&OUTFim, 2);
 	emxInitArray_real_T(&OUTJre, 2);
 	emxInitArray_real_T(&OUTJim, 2);
+	emxInitArray_real_T(&pre, 2);
+	emxInitArray_real_T(&pim, 2);
+	emxInitArray_real_T(&ConLow, 1);
 	emxInitArray_real_T(&OUTZAxis, 1);
 	emxInitArray_real_T(&OUTTAxis, 1);
 	emxInitArray_real_T(&Eff, 1);
 	emxInitArray_real_T(&Omega, 1);
 
-	FILE* fre, * fim, * ire, * iim, * feff, * fomega, * fileID;
-	errno_t err;
-	//bool convert;
-	double Ic, ZetaEx, ZetaExInter, TauEnd, Lz, Lzi;
-	/*double Ic, gamma, betta, betta2, betta_z, betta_z2, betta_perp2, gamma0,
-		c, e, m, nu, w_op, ZetaEx, ZetaExInter, Tend_ns; */
+	FILE* fre, * fim, * ire, * iim, * feff, * fomega, * fileID, * fpre, * fpim, *fcl;
+	errno_t err;	
+	double Ic, TauEnd, Lz, Lzi;	
 
 	int Nz1, Nz2, Nt, OUTNz, OUTNt, idx0, idx1;
-	static int iv2[2];
+	static int iv2[2], piv[2];
 
 	Lz = zex - z0;
 	Lzi = zin - z0;
 
 	Ic = I0;
 	Nz1 = (int)(Lz / dz) + 1;
-	Nt = (int)(Tend / dt) + 1;
-	ZetaEx = Lz;
-	ZetaExInter = Lzi;
-	TauEnd = Tend;
-	
-	//gamma = 1.0 + ukv / 511.0;
-	//betta = sqrt(1.0 - 1.0 / (gamma * gamma));
-	//betta2 = 1.0 - 1.0 / (gamma * gamma);
-	//betta_z = betta / sqrt(g * g + 1.0);
-	//betta_z2 = betta2 / (g * g + 1.0);
-	//betta_perp2 = betta2 - betta_z2;
-	//gamma0 = sqrt(1 - betta_perp2 - betta_z);
-
-	//c = 29979245800; // [cm / s]
-	//e = 4.803e-10; // [וה.ֳׁׁ]
-	//m = 9.1093837015e-28; // [g]
-
-	//nu = 73.952055635763557;
-	//w_op = c * nu / R0;	
+	Nz2 = (int)(Lzi / dz) + 1;
+	Nt = (int)(Tend / dt) + 1;	
+	TauEnd = Tend;		
 
 	if (INTT < 1) {
 		printf("Too small Tend\n");
@@ -122,27 +109,20 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 
 	iv2[0] = OUTNz;
 	iv2[1] = OUTNt;
+	piv[0] = Nz2;
+	piv[1] = Ne;
 
 	OUTFre = emxCreateND_real_T(2, iv2);
 	OUTFim = emxCreateND_real_T(2, iv2);
 	OUTJre = emxCreateND_real_T(2, iv2);
 	OUTJim = emxCreateND_real_T(2, iv2);
+	pre = emxCreateND_real_T(2, piv);
+	pim = emxCreateND_real_T(2, piv);
 	OUTZAxis = emxCreateND_real_T(1, &OUTNz);
 	OUTTAxis = emxCreateND_real_T(1, &OUTNt);
 	Eff = emxCreateND_real_T(1, &OUTNt);
 	Omega = emxCreateND_real_T(1, &OUTNt);
-
-	idx0 = 1;
-	idx1 = 1;
-	//printf("Number %f", OUTBvsT->data[idx0 + OUTBvsT->size[0] * idx1]);
-
-	if (Lzi == Lz) {
-		Nz2 = Nz1;
-	}	
-	else {
-		Nz2 = (int)(ZetaExInter / dz) + 1;
-	}		
-
+	
 	err = fopen_s(&fileID, "input_c.txt", "w");
 	fprintf(fileID, "Nz1 = % i\n", Nz1);
 	fprintf(fileID, "Nz2 = % i\n", Nz2);
@@ -150,7 +130,6 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 	fprintf(fileID, "Ne = % i\n", (int)Ne);
 	fprintf(fileID, "Lz = % f\n", Lz);
 	fprintf(fileID, "Lzi = % f\n", Lzi);
-	fprintf(fileID, "ZetaEx = % f\n", ZetaEx);
 	fprintf(fileID, "TauEnd = % f\n", TauEnd);
 	fprintf(fileID, "Delta = % f\n", Delta);
 	fprintf(fileID, "I0 = % f\n", I0);
@@ -160,11 +139,35 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 	fprintf(fileID, "INTT = % i\n", (int)INTT);
 	fprintf(fileID, "INTZ = % i\n", (int)INTZ);
 	fprintf(fileID, "a0 = % f\n", a0);
+	fprintf(fileID, "nexl = % i\n", nexl);
+	fprintf(fileID, "nexr = % i\n", nexr);
+	fprintf(fileID, "mode = % i\n", mode);
+	fprintf(fileID, "akp2 = % f\n", akp2);
 	fclose(fileID);
 
 	/* Call the entry-point 'orotron'. */
 	gyrotron(Ne, z0, zex, zin, Tend, Delta, I0, dz, dt, tol, INTT, INTZ, a0, nexl, nexr, mode, akp2,
-		OUTFre, OUTFim, OUTJre, OUTJim, OUTZAxis, OUTTAxis, Eff, Omega, &jout);
+		OUTFre, OUTFim, OUTJre, OUTJim, pre, pim, ConLow, OUTZAxis, OUTTAxis, Eff, Omega, &jout);
+
+	err = fopen_s(&fpre, "pre.dat", "w");
+	if (err == 0)
+	{
+		printf("The file 'pre.dat' was opened\n");
+	}
+	else
+	{
+		printf("The file 'pre.dat' was not opened\n");
+	}
+
+	err = fopen_s(&fpim, "pim.dat", "w");
+	if (err == 0)
+	{
+		printf("The file 'pim.dat' was opened\n");
+	}
+	else
+	{
+		printf("The file 'pim.dat' was not opened\n");
+	}
 
 	err = fopen_s(&fre, "fre.dat", "w");
 	if (err == 0)
@@ -226,9 +229,35 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 		printf("The file 'w.dat' was not opened\n");
 	}
 
+	err = fopen_s(&fcl, "cl.dat", "w");
+	if (err == 0)
+	{
+		printf("The file 'cl.dat' was opened\n");
+	}
+	else
+	{
+		printf("The file 'cl.dat' was not opened\n");
+	}
+
+	for (idx0 = 0; idx0 < Nz2; idx0++) {
+		fprintf(fpre, "%e\t", idx0 * dz);
+		for (int idx1 = 0; idx1 < Ne; idx1++) {
+			fprintf(fpre, "%e\t", pre->data[idx0 + pre->size[0] * idx1]);
+		}
+		fprintf(fpre, "\n");
+	}
+
+	for (idx0 = 0; idx0 < Nz2; idx0++) {
+		fprintf(fpim, "%e\t", idx0 * dz);
+		for (idx1 = 0; idx1 < Ne; idx1++) {
+			fprintf(fpim, "%e\t", pim->data[idx0 + pim->size[0] * idx1]);
+		}
+		fprintf(fpim, "\n");
+	}
+
 	for (idx0 = 0; idx0 < OUTNz; idx0++) {
 		fprintf(fre, "%e\t", OUTZAxis->data[idx0]);
-		for (int idx1 = 0; idx1 < OUTNt; idx1++) {
+		for (idx1 = 0; idx1 < OUTNt; idx1++) {
 			fprintf(fre, "%e\t", OUTFre->data[idx0 + OUTFre->size[0] * idx1]);
 		}
 		fprintf(fre, "\n");
@@ -236,7 +265,7 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 
 	for (idx0 = 0; idx0 < OUTNz; idx0++) {
 		fprintf(fim, "%e\t", OUTZAxis->data[idx0]);
-		for (int idx1 = 0; idx1 < OUTNt; idx1++) {
+		for (idx1 = 0; idx1 < OUTNt; idx1++) {
 			fprintf(fim, "%e\t", OUTFim->data[idx0 + OUTFim->size[0] * idx1]);
 		}
 		fprintf(fim, "\n");
@@ -244,7 +273,7 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 
 	for (idx0 = 0; idx0 < OUTNz; idx0++) {
 		fprintf(ire, "%e\t", OUTZAxis->data[idx0]);
-		for (int idx1 = 0; idx1 < OUTNt; idx1++) {
+		for (idx1 = 0; idx1 < OUTNt; idx1++) {
 			fprintf(ire, "%e\t", OUTJre->data[idx0 + OUTJre->size[0] * idx1]);
 		}
 		fprintf(ire, "\n");
@@ -252,7 +281,7 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 
 	for (idx0 = 0; idx0 < OUTNz; idx0++) {
 		fprintf(iim, "%e\t", OUTZAxis->data[idx0]);
-		for (int idx1 = 0; idx1 < OUTNt; idx1++) {
+		for (idx1 = 0; idx1 < OUTNt; idx1++) {
 			fprintf(iim, "%e\t", OUTJim->data[idx0 + OUTJim->size[0] * idx1]);
 		}
 		fprintf(iim, "\n");
@@ -264,6 +293,10 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 
 	for (int idx1 = 0; idx1 < Nt; idx1++) {
 		fprintf(fomega, "%e\t%e\n", idx1*dt, Omega->data[idx1]);
+	}
+
+	for (int idx1 = 0; idx1 < Nt; idx1++) {
+		fprintf(fcl, "%e\t%e\n", idx1 * dt, ConLow->data[idx1]);
 	}
 
 
@@ -345,10 +378,26 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 		}
 	}
 
+	if (fcl)
+	{
+		err = fclose(fcl);
+		if (err == 0)
+		{
+			printf("The file 'cl.dat' was closed\n");
+		}
+		else
+		{
+			printf("The file 'cl.dat' was not closed\n");
+		}
+	}
+
 	emxDestroyArray_real_T(Omega);
 	emxDestroyArray_real_T(Eff);
 	emxDestroyArray_real_T(OUTTAxis);
 	emxDestroyArray_real_T(OUTZAxis);
+	emxDestroyArray_real_T(pre);
+	emxDestroyArray_real_T(pim);
+	emxDestroyArray_real_T(ConLow);
 	emxDestroyArray_real_T(OUTJim);
 	emxDestroyArray_real_T(OUTJre);
 	emxDestroyArray_real_T(OUTFim);
@@ -357,15 +406,15 @@ static void main_gyrotron(double Ne, double z0, double zex, double zin, double T
 
 int main(int argc, const char* const argv[])
 {
-	int INTT, INTZ, mode, nexl, nexr;
-	double Ne, z0, zex, zin, Tend, Delta, I0, dz, dt, tol, a0, akp2;
+	int Ne, INTT, INTZ, mode, nexl, nexr;
+	double z0, zex, zin, Tend, Delta, I0, dz, dt, tol, a0, akp2;
 
 	if (argc != 18) {
 		printf("Expected 17 arguments: Ne, z0, zex, zin, Tend, Delta, I0, dz, dt, tol, INTT, INTZ, a0, nexl, nexr, MODE, akp2\n");
 		exit(-1);
 	}
 
-	Ne = atof(argv[1]);	
+	Ne = atoi(argv[1]);	
     z0 = atof(argv[2]);
 	zex = atof(argv[3]);
 	zin = atof(argv[4]);
